@@ -1,0 +1,41 @@
+name: Start Proxy Server
+
+on:
+  workflow_dispatch: # 允许手动触发
+
+jobs:
+  proxy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install TinyProxy
+        run: |
+          sudo apt update
+          sudo apt install -y tinyproxy
+          echo "Allow 0.0.0.0/0" | sudo tee -a /etc/tinyproxy/tinyproxy.conf
+          echo "LogLevel Critical" | sudo tee -a /etc/tinyproxy/tinyproxy.conf
+
+      - name: Install Ngrok
+        uses: crazy-max/ghaction-setup-ngrok@v2
+        with:
+          authtoken: ${{ secrets.NGROK_AUTHTOKEN }} # 需要设置此Secret
+          region: us # 区域可选，如us, eu, ap等
+
+      - name: Start TinyProxy and expose with Ngrok
+        run: |
+          sudo service tinyproxy restart
+          ngrok http 8888 > /dev/null &
+          sleep 5 # 等待ngrok启动
+          # 获取Ngrok生成的公网URL并打印出来
+          NGROK_URL=$(curl -s localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url')
+          echo "Your proxy URL is: $NGROK_URL"
+          echo "PROXY_URL=$NGROK_URL" >> $GITHUB_ENV
+        # 保持工作流运行，直到超时（最多6小时）
+      - name: Keep alive
+        run: |
+          while true; do
+            echo "[$(date)] Proxy server is running at ${{ env.PROXY_URL }}"
+            sleep 300
+          done
